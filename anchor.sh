@@ -19,6 +19,7 @@ AUTHS_DIR="$CODEX_ANCHOR_DIR/auths"
 CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 CODEX_BIN="$(which codex 2>/dev/null || echo '')"
 TIMEOUT_SEC=60
+MODEL="${CODEX_ANCHOR_MODEL:-gpt-5.4-mini}"
 PROMPT="say hello"
 
 # ─── Pre-flight ───────────────────────────────────────
@@ -70,6 +71,7 @@ for auth_file in "${AUTH_FILES[@]}"; do
     --dangerously-bypass-approvals-and-sandbox \
     --ephemeral \
     --color never \
+    -m "$MODEL" \
     "$PROMPT" 2>&1; then
     elapsed=$(( $(date +%s) - start_time ))
     echo "  ✓ OK (${elapsed}s)"
