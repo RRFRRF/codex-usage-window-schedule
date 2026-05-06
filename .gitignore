@@ -1,5 +1,8 @@
-# Account credentials — NEVER commit
-auths/
+# Real credentials — NEVER commit
+auths/*.json
+
+# Keep the placeholder
+!auths/.gitkeep
 
 # Logs
 *.log
