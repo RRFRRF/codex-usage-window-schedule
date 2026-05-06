@@ -71,6 +71,8 @@ for auth_file in "${AUTH_FILES[@]}"; do
     --dangerously-bypass-approvals-and-sandbox \
     --ephemeral \
     --color never \
+    --ignore-user-config \
+    --ignore-rules \
     -m "$MODEL" \
     "$PROMPT" 2>&1; then
     elapsed=$(( $(date +%s) - start_time ))
