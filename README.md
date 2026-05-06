@@ -9,7 +9,16 @@ After anchoring, the daily quota refresh cycle becomes:
 
 ## How It Works
 
-Codex subscription quota resets on a rolling 5-hour window from the first request of the cycle. By firing a trivial `codex exec "say hello"` at 05:00 each day, we anchor the window start to 5 AM — maximizing usable hours during the workday.
+Codex subscription quota resets on a rolling 5-hour window from the first request of the cycle. By firing a trivial `codex exec "hi"` at 05:00 each day, we anchor the window start to 5 AM — maximizing usable hours during the workday.
+
+## Prerequisites
+
+This project is designed to run on a **24/7 server** — you need a machine that's always on to fire the cron job at 05:00 daily. Suitable platforms:
+
+- **OpenClaw** — always-on agent runtime
+- **Hermes Agent** — persistent agent with cron/scheduler support
+- **Any Linux VPS** — with system crontab
+- **Other cron tools** — GitHub Actions, Cloudflare Workers Cron, etc.
 
 ## Setup
 
@@ -19,16 +28,26 @@ Codex subscription quota resets on a rolling 5-hour window from the first reques
 npm install -g @openai/codex
 ```
 
-### 2. Place Auth Files
+### 2. Login Each Account
 
-Copy each account's `auth.json` into `auths/`:
+Run `codex login --device-auth` for each account. This generates `~/.codex/auth.json` with OAuth tokens.
+
+On headless servers (no browser), use the device code flow:
 
 ```bash
-# Account 1
-cp /path/to/account1/auth.json auths/auth-a1.json
+codex login --device-auth
+# → Open https://auth.openai.com/codex/device in your browser
+# → Enter the one-time code shown in terminal
+```
 
-# Account 2
-cp /path/to/account2/auth.json auths/auth-a2.json
+Repeat for each account. After each successful login, copy the auth file:
+
+```bash
+# After logging in account 1
+cp ~/.codex/auth.json auths/auth-a1.json
+
+# After logging in account 2
+cp ~/.codex/auth.json auths/auth-a2.json
 ```
 
 The `auths/` directory is gitignored — credentials never leave your machine.
@@ -39,14 +58,25 @@ The `auths/` directory is gitignored — credentials never leave your machine.
 bash anchor.sh
 ```
 
-### 4. Add Crontab
+### 4. Schedule the Cron Job
+
+**System crontab (VPS):**
 
 ```bash
-# Edit crontab
 crontab -e
 
-# Add this line:
-0 5 * * * /bin/bash /path/to/codex-usage-window-schedule/anchor.sh >> /path/to/codex-usage-window-schedule/anchor.log 2>&1
+# Beijing 05:00 = UTC 21:00
+0 21 * * * /bin/bash /path/to/codex-usage-window-schedule/anchor.sh >> /path/to/codex-usage-window-schedule/anchor.log 2>&1
+```
+
+**Hermes Agent cron:**
+
+```json
+{
+  "schedule": "0 21 * * *",
+  "script": "/path/to/codex-usage-window-schedule/anchor.sh",
+  "no_agent": true
+}
 ```
 
 ## Auth File Format
@@ -67,12 +97,14 @@ Each `auths/*.json` follows the Codex CLI format:
 }
 ```
 
-> **Note:** `access_token` and `refresh_token` expire periodically. If anchoring starts failing with auth errors, re-login with `codex login` and update the JSON files.
+> **Note:** `access_token` and `refresh_token` expire periodically. If anchoring starts failing with auth errors, re-login with `codex login --device-auth` and update the JSON files.
 
 ## Script Behavior
 
 - Iterates all `auths/*.json` files alphabetically
-- For each: copies to `~/.codex/auth.json`, runs `codex exec --skip-git-repo-check --ephemeral "say hello"`
+- For each: copies to `~/.codex/auth.json`, runs `codex exec --skip-git-repo-check --ephemeral --ignore-user-config --ignore-rules -m gpt-5.4-mini "hi"`
+- Uses `gpt-5.4-mini` by default (override via `CODEX_ANCHOR_MODEL` env var)
+- ~1,455 tokens per account — minimal overhead
 - 60s timeout per account
 - Logs all output; exit code = number of failed accounts
 
@@ -81,9 +113,10 @@ Each `auths/*.json` follows the Codex CLI format:
 ```
 codex-usage-window-schedule/
 ├── README.md
-├── .gitignore          # ignores auths/ and *.log
+├── .gitignore          # ignores auths/*.json and *.log, keeps .gitkeep
 ├── anchor.sh           # main cron script
-└── auths/              # (gitignored)
-    ├── auth-a1.json
-    └── auth-a2.json
+└── auths/              # (gitignored for *.json)
+    ├── .gitkeep        # keeps directory in repo
+    ├── auth-a1.json    # account 1 credentials (not tracked)
+    └── auth-a2.json    # account 2 credentials (not tracked)
 ```
