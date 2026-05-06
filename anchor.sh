@@ -10,11 +10,10 @@
 # Crontab entry:
 #   0 5 * * * /bin/bash /path/to/codex-usage-window-schedule/anchor.sh >> /path/to/codex-usage-window-schedule/anchor.log 2>&1
 
-set -euo pipefail
+set -uo pipefail
 
 # ─── Config ───────────────────────────────────────────
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CODEX_ANCHOR_DIR="${1:-$SCRIPT_DIR}"
+CODEX_ANCHOR_DIR="/root/.hermes/workspace/codex-usage-window-schedule"
 AUTHS_DIR="$CODEX_ANCHOR_DIR/auths"
 CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 CODEX_BIN="$(which codex 2>/dev/null || echo '')"
