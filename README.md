@@ -1,19 +1,26 @@
 # Codex Usage Window Schedule
 
-Anchor OpenAI Codex CLI rate-limit window to **05:00 daily** by running a minimal request with each account at that time.
+Anchor OpenAI Codex CLI rate-limit window by running a minimal request with each account at scheduled times.
 
-After anchoring, the daily quota refresh cycle becomes:
-```
-05:00 → 10:00 → 15:00 → 20:00 → 01:00
-```
+## Schedule Strategy
+
+Two anchor points cover different work patterns:
+
+| Anchor | Beijing Time | UTC | Window Cycle | Scenario |
+|--------|-------------|-----|-------------|----------|
+| Primary | 05:00 | 21:00 | 5→10→15→20→01 | Morning work |
+| Fallback | 11:00 | 03:00 | 11→16→21→02→07 | Skip morning, start afternoon |
+
+- If you use Codex in the morning → 05:00 anchor takes effect, 11:00 run is a no-op (just ~3k tokens wasted)
+- If you skip the morning → 05:00 anchor expires unused, 11:00 re-anchors for the afternoon
 
 ## How It Works
 
-Codex subscription quota resets on a rolling 5-hour window from the first request of the cycle. By firing a trivial `codex exec "hi"` at 05:00 each day, we anchor the window start to 5 AM — maximizing usable hours during the workday.
+Codex subscription quota resets on a rolling 5-hour window from the first request of the cycle. By firing a trivial `codex exec "hi"` at the anchor times, we fix the window start — maximizing usable hours during your actual work time.
 
 ## Prerequisites
 
-This project is designed to run on a **24/7 server** — you need a machine that's always on to fire the cron job at 05:00 daily. Suitable platforms:
+This project is designed to run on a **24/7 server** — you need a machine that's always on to fire the cron jobs. Suitable platforms:
 
 - **OpenClaw** — always-on agent runtime
 - **Hermes Agent** — persistent agent with cron/scheduler support
@@ -58,7 +65,7 @@ The `auths/` directory is gitignored — credentials never leave your machine.
 bash anchor.sh
 ```
 
-### 4. Schedule the Cron Job
+### 4. Schedule the Cron Jobs
 
 **System crontab (VPS):**
 
@@ -67,16 +74,17 @@ crontab -e
 
 # Beijing 05:00 = UTC 21:00
 0 21 * * * /bin/bash /path/to/codex-usage-window-schedule/anchor.sh >> /path/to/codex-usage-window-schedule/anchor.log 2>&1
+# Beijing 11:00 = UTC 03:00
+0 3 * * * /bin/bash /path/to/codex-usage-window-schedule/anchor.sh >> /path/to/codex-usage-window-schedule/anchor.log 2>&1
 ```
 
 **Hermes Agent cron:**
 
 ```json
-{
-  "schedule": "0 21 * * *",
-  "script": "/path/to/codex-usage-window-schedule/anchor.sh",
-  "no_agent": true
-}
+[
+  { "name": "codex-anchor-5am",  "schedule": "0 21 * * *", "script": "anchor.sh", "no_agent": true },
+  { "name": "codex-anchor-11am", "schedule": "0 3 * * *",  "script": "anchor.sh", "no_agent": true }
+]
 ```
 
 ## Auth File Format
