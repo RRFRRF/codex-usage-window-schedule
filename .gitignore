@@ -1,0 +1,5 @@
+# Account credentials — NEVER commit
+auths/
+
+# Logs
+*.log
