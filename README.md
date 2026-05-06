@@ -63,6 +63,8 @@ The `auths/` directory is gitignored — credentials never leave your machine.
 
 ```bash
 bash anchor.sh
+# or, from another working directory:
+bash /path/to/codex-usage-window-schedule/anchor.sh /path/to/codex-usage-window-schedule
 ```
 
 ### 4. Schedule the Cron Jobs
@@ -110,11 +112,22 @@ Each `auths/*.json` follows the Codex CLI format:
 ## Script Behavior
 
 - Iterates all `auths/*.json` files alphabetically
-- For each: copies to `~/.codex/auth.json`, runs `codex exec --skip-git-repo-check --ephemeral --ignore-user-config --ignore-rules -m gpt-5.4-mini "hi"`
+- Resolves the project directory from the script path by default, or from the first argument / `CODEX_ANCHOR_DIR`
+- Before running, checks `tokens.account_id` and fails fast if two auth files point at the same account
+- For each account: copies the auth file into an isolated temporary `CODEX_HOME`, runs `codex exec --skip-git-repo-check --ephemeral --ignore-user-config --ignore-rules -m gpt-5.4-mini "hi"`, then saves any refreshed auth JSON back to that account file
+- Does not overwrite your original `~/.codex/auth.json`
 - Uses `gpt-5.4-mini` by default (override via `CODEX_ANCHOR_MODEL` env var)
 - ~1,455 tokens per account — minimal overhead
 - 60s timeout per account
 - Logs all output; exit code = number of failed accounts
+
+## Troubleshooting
+
+If one account anchors but another does not:
+
+- Confirm the files in `auths/` are for different accounts. The script now fails with `duplicate account detected` when two files share the same `tokens.account_id`.
+- Re-login the failing account with `codex login --device-auth`, then replace only that account's JSON file.
+- Check `anchor.log` for per-account failures. A successful run prints `✓ OK` for each account.
 
 ## File Structure
 

@@ -13,13 +13,38 @@
 set -uo pipefail
 
 # ─── Config ───────────────────────────────────────────
-CODEX_ANCHOR_DIR="/root/.hermes/workspace/codex-usage-window-schedule"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CODEX_ANCHOR_DIR="${1:-${CODEX_ANCHOR_DIR:-$SCRIPT_DIR}}"
 AUTHS_DIR="$CODEX_ANCHOR_DIR/auths"
-CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
+CODEX_HOME_BASE="${CODEX_HOME:-$HOME/.codex}"
 CODEX_BIN="$(which codex 2>/dev/null || echo '')"
 TIMEOUT_SEC=60
 MODEL="${CODEX_ANCHOR_MODEL:-gpt-5.4-mini}"
 PROMPT="say hello"
+RUNTIME_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/codex-anchor.XXXXXX")"
+trap 'rm -rf "$RUNTIME_ROOT"' EXIT
+
+read_auth_account_id() {
+  if ! command -v node >/dev/null 2>&1; then
+    return 0
+  fi
+
+  node -e '
+const fs = require("fs");
+const auth = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+process.stdout.write((auth.tokens && auth.tokens.account_id) || "");
+' "$1"
+}
+
+short_hash() {
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha256sum
+  else
+    cksum
+  fi | awk '{print substr($1, 1, 12)}'
+}
 
 # ─── Pre-flight ───────────────────────────────────────
 if [[ -z "$CODEX_BIN" ]]; then
@@ -32,8 +57,6 @@ if [[ ! -d "$AUTHS_DIR" ]]; then
   exit 1
 fi
 
-mkdir -p "$CODEX_HOME"
-
 # ─── Collect auth files ───────────────────────────────
 AUTH_FILES=()
 while IFS= read -r -d '' f; do
@@ -44,6 +67,31 @@ if [[ ${#AUTH_FILES[@]} -eq 0 ]]; then
   echo "[FATAL] No auth JSON files found in $AUTHS_DIR"
   exit 1
 fi
+
+ACCOUNT_FINGERPRINTS_FILE="$RUNTIME_ROOT/account-fingerprints"
+: > "$ACCOUNT_FINGERPRINTS_FILE"
+for auth_file in "${AUTH_FILES[@]}"; do
+  if ! account_id="$(read_auth_account_id "$auth_file")"; then
+    echo "[FATAL] invalid auth JSON: $auth_file"
+    exit 1
+  fi
+
+  if [[ -z "$account_id" ]]; then
+    continue
+  fi
+
+  fingerprint="$(printf "%s" "$account_id" | short_hash)"
+  while IFS="	" read -r seen_fingerprint seen_file; do
+    if [[ -z "$seen_fingerprint" ]]; then
+      continue
+    fi
+    if [[ "$seen_fingerprint" == "$fingerprint" ]]; then
+      echo "[FATAL] duplicate account detected: $seen_file and $auth_file share account fingerprint $fingerprint"
+      exit 1
+    fi
+  done < "$ACCOUNT_FINGERPRINTS_FILE"
+  printf "%s\t%s\n" "$fingerprint" "$auth_file" >> "$ACCOUNT_FINGERPRINTS_FILE"
+done
 
 echo "=========================================="
 echo "Codex Usage Window Anchor — $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
@@ -59,13 +107,20 @@ for auth_file in "${AUTH_FILES[@]}"; do
   echo ""
   echo "── [$account_name] ──"
 
-  # Swap auth
-  cp "$auth_file" "$CODEX_HOME/auth.json"
-  echo "  auth: $auth_file → $CODEX_HOME/auth.json"
+  account_home="$RUNTIME_ROOT/$account_name"
+  mkdir -p "$account_home"
+
+  if ! cp "$auth_file" "$account_home/auth.json"; then
+    echo "  ✗ FAILED to prepare isolated auth"
+    ((FAIL++))
+    continue
+  fi
+  chmod 600 "$account_home/auth.json" 2>/dev/null || true
+  echo "  auth: $auth_file → isolated CODEX_HOME"
 
   # Run codex exec (headless, ephemeral, no git repo required)
   start_time="$(date +%s)"
-  if timeout "$TIMEOUT_SEC" "$CODEX_BIN" exec \
+  if CODEX_HOME="$account_home" timeout "$TIMEOUT_SEC" "$CODEX_BIN" exec \
     --skip-git-repo-check \
     --dangerously-bypass-approvals-and-sandbox \
     --ephemeral \
@@ -74,6 +129,11 @@ for auth_file in "${AUTH_FILES[@]}"; do
     --ignore-rules \
     -m "$MODEL" \
     "$PROMPT" 2>&1; then
+    if ! cp "$account_home/auth.json" "$auth_file"; then
+      echo "  ✗ FAILED to save refreshed auth"
+      ((FAIL++))
+      continue
+    fi
     elapsed=$(( $(date +%s) - start_time ))
     echo "  ✓ OK (${elapsed}s)"
     ((SUCCESS++))
@@ -93,6 +153,7 @@ done
 echo ""
 echo "=========================================="
 echo "Done: $SUCCESS ok, $FAIL fail — $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+echo "Original CODEX_HOME preserved: $CODEX_HOME_BASE"
 echo "=========================================="
 
 exit $FAIL
