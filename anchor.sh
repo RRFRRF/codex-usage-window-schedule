@@ -20,7 +20,7 @@ CODEX_HOME_BASE="${CODEX_HOME:-$HOME/.codex}"
 CODEX_BIN="$(which codex 2>/dev/null || echo '')"
 TIMEOUT_SEC=60
 MODEL="${CODEX_ANCHOR_MODEL:-gpt-5.4-mini}"
-PROMPT="say hello"
+PROMPT="just say hi"
 RUNTIME_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/codex-anchor.XXXXXX")"
 trap 'rm -rf "$RUNTIME_ROOT"' EXIT
 
@@ -128,6 +128,16 @@ for auth_file in "${AUTH_FILES[@]}"; do
     --ignore-user-config \
     --ignore-rules \
     -m "$MODEL" \
+    -c model_reasoning_effort=minimal \
+    -c model_reasoning_summary=none \
+    -c model_verbosity=low \
+    -c web_search=disabled \
+    -c features.memories=false \
+    -c memories.use_memories=false \
+    -c features.multi_agent=false \
+    -c features.shell_tool=false \
+    -c features.codex_hooks=false \
+    -c tools.view_image=false \
     "$PROMPT" 2>&1; then
     if ! cp "$account_home/auth.json" "$auth_file"; then
       echo "  ✗ FAILED to save refreshed auth"
