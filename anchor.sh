@@ -128,16 +128,14 @@ for auth_file in "${AUTH_FILES[@]}"; do
     --ignore-user-config \
     --ignore-rules \
     -m "$MODEL" \
-    -c model_reasoning_effort=minimal \
+    -c model_reasoning_effort=none \
     -c model_reasoning_summary=none \
-    -c model_verbosity=low \
     -c web_search=disabled \
-    -c features.memories=false \
-    -c memories.use_memories=false \
-    -c features.multi_agent=false \
-    -c features.shell_tool=false \
-    -c features.codex_hooks=false \
-    -c tools.view_image=false \
+    --disable image_generation \
+    --disable memories \
+    --disable multi_agent \
+    --disable shell_tool \
+    --disable codex_hooks \
     "$PROMPT" 2>&1; then
     if ! cp "$account_home/auth.json" "$auth_file"; then
       echo "  ✗ FAILED to save refreshed auth"
